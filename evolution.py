@@ -121,14 +121,21 @@ class Evolvable:
         assert cls.label and type(cls.label) is str, "a string label for the UI is required"
         assert cls.identifier and type(cls.identifier) is str, "a string identifier for the Blender IDs"
         
-        cls._mutationOperator = mutationOperator(cls, cls.label, cls.identifier)
-        cls._editOperator = editOperator(cls, cls.label, cls.identifier)
-        cls._combineOperator = combineOperator(cls,cls.label, cls.identifier)
+        # check for None to allow setting custom generators and to avoid constructing them twice
+        if optionalKey(cls, "_generateOperator") is None:
+            cls._generateOperator = generateOperator(cls, cls.label, cls.identifier)
+        if optionalKey(cls, "_mutationOperator") is None:
+            cls._mutationOperator = mutationOperator(cls, cls.label, cls.identifier)
+        if optionalKey(cls, "_editOperator") is None:
+            cls._editOperator = editOperator(cls, cls.label, cls.identifier)
+        if optionalKey(cls, "_combineOperator") is None:
+            cls._combineOperator = combineOperator(cls,cls.label, cls.identifier)
         class EvPropGroup(bpy.types.PropertyGroup, cls):
             pass
         
         bpy.utils.register_class(EvPropGroup)
         setattr(bpy.types.Object, cls.identifier, bpy.props.PointerProperty(type=EvPropGroup))
+        bpy.utils.register_class(cls._generateOperator)
         bpy.utils.register_class(cls._mutationOperator)
         bpy.utils.register_class(cls._editOperator)
         bpy.utils.register_class(cls._combineOperator)
@@ -137,9 +144,66 @@ class Evolvable:
     def unregisterOperators(cls):
         delattr(bpy.types.Object, cls.identifier)
         bpy.utils.unregister_class(EvPropGroup)
+        bpy.utils.unregister_class(cls._generateOperator)
         bpy.utils.unregister_class(cls._mutationOperator)
         bpy.utils.unregister_class(cls._editOperator)
         bpy.utils.unregister_class(cls._combineOperator)
+
+#############################################
+
+class SimpleGenerator:
+    """Generator for an Evolvable that just picks all parameters uniformly from their valid range."""
+    
+    def __init__(self, evolvable):
+        self.evolvable = evolvable
+    
+    @staticmethod
+    def randProp(prop):
+        def pickUniform(prop):
+            validRange = optionalKey(prop, "soft_max", optionalKey(prop, "max")), optionalKey(prop, "soft_min", optionalKey(prop, "min"))
+            return random.uniform(*validRange)
+        
+        if prop["type"] is bpy.props.FloatProperty:
+            return pickUniform(prop)
+        if prop["type"] is bpy.props.IntProperty:
+            return int(pickUniform(prop))
+        if prop["type"] is bpy.props.BoolProperty:
+            return random.random() > .5
+        if prop["type"] is bpy.props.FloatVectorProperty:
+            return [ pickUniform(prop) for _ in range(prop["size"]) ]
+        if prop["type"] is bpy.props.IntVectorProperty:
+            return [ int(pickUniform(prop)) for _ in range(prop["size"]) ]
+        assert False, str(prop["type"]) + " not yet supported"
+    
+    def __call__(self):
+        return self.evolvable( **{
+            name : SimpleGenerator.randProp(prop) for name, prop in properties(self.evolvable).items()
+            })
+
+#############################################
+
+def generateOperator(evolvable, label, identifier):
+    class Generate(bpy.types.Operator):
+        bl_idname = "mesh.random_"+identifier
+        bl_label = "Random "+label
+        bl_options = {"REGISTER", "UNDO"}
+
+        count = bpy.props.IntProperty(
+            name="Count",
+            description="How many "+label+"s to generate",
+            default=4, min=1
+        )
+        
+        generator = SimpleGenerator(evolvable)
+   
+        def execute(self, context):
+            for pos in range(-self.count//2, self.count//2):
+                newEvObj = self.generator()
+                blObj = newEvObj.toMeshObject()
+                blObj.location = (pos, 0, 0)
+                linkAndSelect(blObj, context)
+            return {'FINISHED'}
+    return Generate
 
 #############################################
 

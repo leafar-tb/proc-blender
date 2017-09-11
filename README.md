@@ -1,7 +1,10 @@
 # proc-blender
 This is a template/framework for Blender addons with procedural and genetic mesh generation.
 It is derived from the [Procedural Mushrooms](https://github.com/leafar-tb/proc-shrooms) addon and refactored for better reusability.
-See \_\_init\_\_.py and example.py for general usage.
+You only need to define the parameters you need using Blender properties and a function generating a mesh from these parameters.
+Operators for generating and modifying objects are derived automatically.
+(Though you will likely want to replace the default generator.)
+See \_\_init\_\_.py and example.py for more info.
 You may also refer to the procedural mushrooms repo, though it is structured differently at the moment.
 
 **The following part can be used as basis for the readme of forked repos.**
@@ -27,6 +30,9 @@ There you'll find the settings affecting the operator.
 When the name of a setting is not helpful, try hovering the mouse over a value for a longer explanation.
 Your changes to the settings are directly applied, so you can also play around with them to see what they do.
 (It will use a fresh random seed with each change, so generated results will vary.)
+
+## Generation
+Simply call the *Random XY* operator to generate some objects from random parameters.
 
 ## Mutation
 When invoking the *Mutate XY* operator on a selected object a number of variations is produced based on it.

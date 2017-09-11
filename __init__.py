@@ -42,7 +42,11 @@ class GenerateExample(bpy.types.Operator):
             obj.location = (pos, 0, 0)
             linkAndSelect(obj, context)
         return {'FINISHED'}
-    
+
+# you may wish to remove the default generator, by overwriting it
+# if you do, your Operator will be registered by Example.registerOperators()
+#Example._generateOperator = GenerateExample
+
 #############################################
 # un-/register formalities
 #############################################
