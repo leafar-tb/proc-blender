@@ -28,10 +28,10 @@ def optionalKey(obj, id, default=None, allowGetNone=False):
     """
     try:
         if type(obj) is dict:
-            return obj.__getitem__(id) if allowGetNone else optional(obj.__getitem__(id), default)
+            return obj[id] if allowGetNone else optional(obj[id], default)
         assert type(id) is str, "attribute identifier should be a string"
-        return obj.__getattribute__(id) if allowGetNone else optional(obj.__getattribute__(id), default)
-    except KeyError or AttributeError:
+        return getattr(obj, id) if allowGetNone else optional(getattr(obj, id), default)
+    except (KeyError, AttributeError):
         return default
 
 def linkAndSelect(obj, context=bpy.context):
