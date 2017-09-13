@@ -12,12 +12,14 @@ from .evolution import Evolvable
 
 class ExampleProperties:
     """
-    The properties of your Evolvable are defined by bpy.props (not all are supported yet, but at least Float and FloatVector work).
+    The parameters of your Evolvable are defined as bpy.props .
+    Currently, float, int and bool properties are supported (including their vector variants).
     You don't have to define the properties in a separate class like this, but it might improve code structure.
     
     For every property you must define name, description and a default value.
+    Vector props also require a size.
     
-    You need to define min or soft_min (you can define both).
+    For float and int props you need to define min or soft_min (you can define both).
     min is a hard lower bound to the range of valid values. It is best used for technical restrictions.
     soft_min is a limit to the range of reasonable values, though outliers are possible. It is best used for aestethical (e.g. scale) restrictions.
     The analogue applies to max and soft_max.
@@ -29,6 +31,42 @@ class ExampleProperties:
         default     = .2,
         min         = 0,
         soft_min    = 0.01, soft_max     = .5
+    )
+    
+    fvEx = bpy.props.FloatVectorProperty(
+        name        = "FooBar",
+        description = "Lorem ipsum dolor sit",
+        size        = 3,
+        default     = (1, 1, 1),
+        min         = 0,    max = 10
+    )
+    
+    iEx = bpy.props.IntProperty(
+        name        = "FooBar",
+        description = "Lorem ipsum dolor sit",
+        default     = 2,
+        min         = 0,    max = 10
+    )
+    
+    ivEx = bpy.props.IntVectorProperty(
+        name        = "FooBar",
+        description = "Lorem ipsum dolor sit",
+        size        = 3,
+        default     = (1, 1, 1),
+        min         = 0,    max = 10
+    )
+    
+    bEx = bpy.props.BoolProperty(
+        name        = "FooBar",
+        description = "Lorem ipsum dolor sit",
+        default     = True
+    )
+    
+    bvEx = bpy.props.BoolVectorProperty(
+        name        = "FooBar",
+        description = "Lorem ipsum dolor sit",
+        size        = 3,
+        default     = (False, True, False)
     )
 
 #############################################

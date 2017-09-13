@@ -1,7 +1,9 @@
 import bpy
 import random
 import math
-from .util import optional, optionalKey, clip, linkAndSelect
+from .util import optional, optionalKey, clip, linkAndSelect, isIterable
+from bpy.props import *
+
 
 class Evolvable:
     """
@@ -48,7 +50,7 @@ class Evolvable:
         self.store(getattr(obj, self.__class__.identifier))
         return obj
 
-    def mutate(self, radiation): # doesn't yet handle all property types
+    def mutate(self, radiation):
         """mutate a new object from this one. parameter radiation must be positive and should not be larger than 100"""
         assert(radiation >= 0)
         
@@ -62,9 +64,17 @@ class Evolvable:
         descendant = self.__class__.load(self)
         for name, params in mutatingProps:
             current = getattr(descendant, name)
-            if params["type"] is bpy.props.BoolProperty:
+            if params["type"] in (FloatVectorProperty, IntVectorProperty, BoolVectorProperty):
+                idx = random.randrange(params["size"]) # evolve only one entry of a vector
+            
+            if params["type"] is BoolProperty:
                 newVal = (not current) if radiation/100 < random.random() else current
-            else:
+            elif params["type"] is BoolVectorProperty:
+                newVal = current.copy()
+                newVal[idx] = (not current[idx]) if radiation/100 < random.random() else current[idx]
+                
+            elif params["type"] in (FloatProperty, FloatVectorProperty, IntProperty, IntVectorProperty):
+                dtype = float if params["type"] in (FloatProperty, FloatVectorProperty) else int
                 span = optionalKey(params, "soft_max", optionalKey(params, "max")) - optionalKey(params, "soft_min", optionalKey(params, "min"))
                 span *= radiation/100 # percent to factor
                 
@@ -81,13 +91,14 @@ class Evolvable:
                         return curr if curr > params["soft_max"] else params["soft_max"]
                     return val
 
-                if params["type"] is bpy.props.FloatProperty:
+                if params["type"] in (FloatProperty, IntProperty):
                     newVal = fuzzyClamp(random.gauss(current, span), current)
-                elif params["type"] is bpy.props.FloatVectorProperty:
-                    i = random.randrange(params["size"]) # evolve only one entry of the vector
+                elif params["type"] in (FloatVectorProperty, IntVectorProperty):
                     newVal = current.copy()
-                    newVal[i] = fuzzyClamp(random.gauss(current[i], span), current[i])
-            #TODO handle other property types
+                    newVal[idx] = fuzzyClamp(random.gauss(current[idx], span), current[idx])
+            else:
+                raise Exception("Property type "+str(prop["type"])+" not supported.")
+            
             setattr(descendant, name, newVal)
         
         return descendant
@@ -105,13 +116,24 @@ class Evolvable:
         for name, prop in properties(cls).items():
             gene = random.choice(genePool)
             if gene is None:
-                if prop["type"] is bpy.props.FloatVectorProperty:
+                if prop["type"] in (FloatProperty, FloatVectorProperty):
+                    dtype = float
+                elif prop["type"] in (IntProperty, IntVectorProperty):
+                    dtype = int
+                elif prop["type"] in (BoolProperty, BoolVectorProperty):
+                    # flip a coin if equally distributed, else take majority
+                    dtype = lambda x: random.random() > .5 if x == .5 else x > .5
+                
+                if prop["type"] in (FloatVectorProperty, IntVectorProperty, BoolVectorProperty):
                     val = [0]*prop['size']
                     for i in range(prop['size']):
-                        val[i] = sum(optionalKey(p, name, prop['default'])[i] for p in geneSeeds)/len(genePool)
+                        val[i] = dtype( sum(optionalKey(p, name, prop['default'])[i] for p in geneSeeds) / len(genePool) )
                     setattr(child, name, val)
-                else: # TODO other prop types will need special treatment too
-                    setattr(child, name, sum(optionalKey(p, name, prop['default']) for p in geneSeeds)/len(genePool))
+                elif prop["type"] in (FloatProperty, IntProperty, BoolProperty):
+                    val = dtype( sum(optionalKey(p, name, prop['default']) for p in geneSeeds) / len(genePool) )
+                    setattr(child, name, val)
+                else:
+                    raise Exception("Property type "+str(prop["type"])+" not supported.")
             else:
                 setattr(child, name, optionalKey(gene, name, prop['default']))
         return child
@@ -134,7 +156,7 @@ class Evolvable:
             pass
         
         bpy.utils.register_class(EvPropGroup)
-        setattr(bpy.types.Object, cls.identifier, bpy.props.PointerProperty(type=EvPropGroup))
+        setattr(bpy.types.Object, cls.identifier, PointerProperty(type=EvPropGroup))
         bpy.utils.register_class(cls._generateOperator)
         bpy.utils.register_class(cls._mutationOperator)
         bpy.utils.register_class(cls._editOperator)
@@ -163,17 +185,19 @@ class SimpleGenerator:
             validRange = optionalKey(prop, "soft_max", optionalKey(prop, "max")), optionalKey(prop, "soft_min", optionalKey(prop, "min"))
             return random.uniform(*validRange)
         
-        if prop["type"] is bpy.props.FloatProperty:
+        if prop["type"] is FloatProperty:
             return pickUniform(prop)
-        if prop["type"] is bpy.props.IntProperty:
+        elif prop["type"] is IntProperty:
             return int(pickUniform(prop))
-        if prop["type"] is bpy.props.BoolProperty:
+        elif prop["type"] is BoolProperty:
             return random.random() > .5
-        if prop["type"] is bpy.props.FloatVectorProperty:
+        elif prop["type"] is FloatVectorProperty:
             return [ pickUniform(prop) for _ in range(prop["size"]) ]
-        if prop["type"] is bpy.props.IntVectorProperty:
+        elif prop["type"] is IntVectorProperty:
             return [ int(pickUniform(prop)) for _ in range(prop["size"]) ]
-        assert False, str(prop["type"]) + " not yet supported"
+        elif prop["type"] is BoolVectorProperty:
+            return [ random.random() > .5 for _ in range(prop["size"]) ]
+        raise Exception("Property type "+str(prop["type"])+" not supported.")
     
     def __call__(self):
         return self.evolvable( **{
@@ -188,7 +212,7 @@ def generateOperator(evolvable, label, identifier):
         bl_label = "Random "+label
         bl_options = {"REGISTER", "UNDO"}
 
-        count = bpy.props.IntProperty(
+        count = IntProperty(
             name="Count",
             description="How many "+label+"s to generate",
             default=4, min=1
@@ -213,13 +237,13 @@ def mutationOperator(evolvable, label, identifier):
         bl_label = "Mutate "+label
         bl_options = {"REGISTER", "UNDO"}
 
-        count = bpy.props.IntProperty(
+        count = IntProperty(
             name="Variations",
             description="How many different objects to generate from this one",
             default=4, min=1
         )
 
-        radiation = bpy.props.FloatProperty(
+        radiation = FloatProperty(
             name="Radiation",
             description="Strength of mutation",
             default=70, step=100,
@@ -267,7 +291,7 @@ def combineOperator(evolvable, label, identifier):
         bl_label = "Combine "+label+"s"
         bl_options = {"REGISTER", "UNDO"}
         
-        count = bpy.props.IntProperty(
+        count = IntProperty(
             name="Offspring",
             description="How many objects to generate",
             default=2, min=1
@@ -300,21 +324,32 @@ def properties(props):
         map( lambda p: (p[0], mergeTypeInfo(p[1])),
             # pick those where the attribute value is a Blender Property tuple, i.e. has the form (property type, dict with config)
             # type(bpy.props.*) is the same for all properties
-            filter( lambda v: type(v[1]) is tuple and len(v[1]) == 2 and type(v[1][0]) is type(bpy.props.FloatProperty),
+            filter( lambda v: type(v[1]) is tuple and len(v[1]) == 2 and type(v[1][0]) is type(FloatProperty),
                 # get tuples (name, attribute value)
                 ( (n, getattr(props, n)) for n in dir(props) )
     )))
 
 def propClamp(value, prop, soft=False):
-    from numbers import Integral, Real
-    minv = optionalKey(prop, "soft_min" if soft else "min", value)
-    maxv = optionalKey(prop, "soft_max" if soft else "max", value)
-    if isinstance(value, Integral):
-        return clip(value, minv, maxv)
-    if isinstance(value, Real):
-        return clip(value, minv, maxv)
-    if prop["type"] is bpy.props.FloatVectorProperty:
-        return list(clip(val, minv, maxv) for val in value)
-    if prop["type"] is bpy.props.BoolProperty:
+    ptype = prop["type"]
+    
+    if ptype in (FloatProperty, FloatVectorProperty, IntProperty, IntVectorProperty):
+        dtype = float if ptype in (FloatProperty, FloatVectorProperty) else int
+        
+        # we might just clamp one entry of a vector property, so we need to check, whether an iterable was given
+        if ptype in (FloatVectorProperty, IntVectorProperty) and isIterable(value):
+            return [ propClamp(val, prop, soft) for val in value ]
+        else:
+            value = dtype(value)
+            minv = optionalKey(prop, "soft_min" if soft else "min", value)
+            maxv = optionalKey(prop, "soft_max" if soft else "max", value)
+            return clip(value, minv, maxv)
+    
+    if ptype is BoolVectorProperty and isIterable(value):
+        return [ bool(val) for val in value ]
+    if ptype in (BoolProperty, BoolVectorProperty):
         return bool(value)
-    raise Exception("Property type "+str(type(value))+" not yet supported.")
+    
+    if ptype is StringProperty:
+        return str(value)[:optionalKey(prop, "maxlen", -1)]
+    
+    raise Exception("Property type "+str(ptype)+" not supported.")

@@ -63,3 +63,10 @@ def mergeMeshPydata(*args):
         for i in range(1, len(result)):
             result[i].extend( [idx+offset for idx in idxtup] for idxtup in tup[i] )
     return result
+
+def isIterable(val):
+    try:
+        iter(val)
+        return True
+    except TypeError:
+        return False
